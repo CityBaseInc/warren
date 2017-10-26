@@ -9,12 +9,13 @@ defmodule Warren.Mixfile do
      start_permanent: Mix.env == :prod,
      deps: deps(),
      source_url: "https://github.com/CityBaseInc/warren",
+     description: "Routing DSL for consuming AMQP messages",
      package: package()]
   end
 
   defp package do
     [
-      files: ["lib", "mix.exs", "README", "LICENSE*"],
+      files: ["lib", "mix.exs", "README.md", "LICENSE*"],
       maintainers: ["Alex Pedenko"],
       organization: "CityBase, Inc",
       licenses: ["MIT"],
