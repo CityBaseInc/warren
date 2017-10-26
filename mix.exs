@@ -8,6 +8,7 @@ defmodule Warren.Mixfile do
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
      deps: deps(),
+     source_url: "https://github.com/CityBaseInc/warren",
      package: package()]
   end
 
@@ -15,6 +16,7 @@ defmodule Warren.Mixfile do
     [
       files: ["lib", "mix.exs", "README", "LICENSE*"],
       maintainers: ["Alex Pedenko"],
+      organization: "CityBase, Inc",
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/CityBaseInc/warren"}
     ]
