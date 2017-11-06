@@ -41,6 +41,7 @@ defmodule Warren.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    [{:amqp, "~> 1.0.0-pre.2"}]
+    [{:amqp, "~> 1.0.0-pre.2"},
+     {:ex_doc, ">= 0.0.0", only: :dev}]
   end
 end

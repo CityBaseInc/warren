@@ -94,7 +94,7 @@ defmodule Warren.Consumer do
     {:noreply, state}
   end
 
-  defp no_consumer(channel, tag, redelivered, payload, routing_key) do
+  def no_consumer(channel, tag, redelivered, payload, routing_key) do
     raise "No consumer function specified for #{routing_key}"
 
   rescue
