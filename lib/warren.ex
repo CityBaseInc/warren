@@ -12,7 +12,7 @@ defmodule Warren do
 
   defmacro __using__(opts) do
     quote do
-      @behaviour Phoenix.Endpoint
+#      @behaviour Phoenix.Endpoint
 
       unquote(config(opts))
 #      unquote(pubsub())

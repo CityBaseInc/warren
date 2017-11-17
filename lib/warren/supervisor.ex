@@ -29,15 +29,7 @@ defmodule Warren.Supervisor do
 
     server? = server?(conf)
 
-#    if server? and conf[:code_reloader] do
-#      Phoenix.CodeReloader.Server.check_symlinks()
-#    end
-
-    children =
-#      pubsub_children(mod, conf) ++
-#      config_children(mod, conf, otp_app) ++
-      server_children(mod, conf, server?)
-#      watcher_children(mod, conf, server?)
+    children = server_children(mod, conf, server?)
 
     supervise(children, strategy: :one_for_one)
   end
@@ -45,16 +37,21 @@ defmodule Warren.Supervisor do
   defp server_children(mod, conf, server?) do
     if server? do
       server = Module.concat(mod, "Server")
-      long_poll = Module.concat(mod, "LongPoll.Supervisor")
-      [supervisor(Phoenix.Endpoint.Handler, [conf[:otp_app], mod, [name: server]]),
-       supervisor(Phoenix.Transports.LongPoll.Supervisor, [[name: long_poll]])]
+      consumers(conf)
     else
       []
     end
   end
 
+  defp consumers(conf) do
+    [worker(Warren.Consumer, [conf], id: :first)]
+  end
+
   defp defaults(otp_app, _module) do
-    [otp_app: otp_app]
+    [
+      otp_app: otp_app,
+      url: "amqp://guest:guest@localhost",
+      exchange: "test"]
   end
 
   @doc """

@@ -10,13 +10,18 @@ defmodule Warren.Consumer do
 
   require Logger
 
-  def start_link(options) do
-    GenServer.start_link(__MODULE__, options, [])
+  def start_link(config) do
+    GenServer.start_link(__MODULE__, config, [])
   end
+#
+  def init(config) do
 
-  def init(opts) do
-    default_opts()
-    |> Map.merge(opts)
+    config_map =
+      config
+      |> Enum.into(%{})
+
+    default_config()
+    |> Map.merge(config_map)
     |> rabbitmq_connect()
   end
 
@@ -40,6 +45,12 @@ defmodule Warren.Consumer do
 
     spawn fn -> consume.(chan, tag, redelivered, payload, routing_key) end
 
+    {:noreply, state}
+  end
+
+  def handle_info({:DOWN, _, :process, _pid, _reason}, %{opts: opts}) do
+    {:ok, chan} = rabbitmq_connect(opts)
+    state = %{opts: opts, chan: chan}
     {:noreply, state}
   end
 
@@ -88,12 +99,6 @@ defmodule Warren.Consumer do
     end
   end
 
-  def handle_info({:DOWN, _, :process, _pid, _reason}, %{opts: opts}) do
-    {:ok, chan} = rabbitmq_connect(opts)
-    state = %{opts: opts, chan: chan}
-    {:noreply, state}
-  end
-
   def no_consumer(channel, tag, redelivered, payload, routing_key) do
     raise "No consumer function specified for #{routing_key}"
 
@@ -110,7 +115,7 @@ defmodule Warren.Consumer do
       IO.puts "Error converting #{payload} to integer"
   end
 
-  defp default_opts() do
+  defp default_config() do
     %{
       reconnect_wait: 10000,
       define_error_queue: true,
