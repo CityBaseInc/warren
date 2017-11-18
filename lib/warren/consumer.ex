@@ -14,15 +14,16 @@ defmodule Warren.Consumer do
     GenServer.start_link(__MODULE__, config, [])
   end
 #
-  def init(config) do
+  def init({config, route}) do
+    rabbitmq_connect(config, route)
 
-    config_map =
-      config
-      |> Enum.into(%{})
-
-    default_config()
-    |> Map.merge(config_map)
-    |> rabbitmq_connect()
+#    config_map =
+#      config
+#      |> Enum.into(%{})
+#
+#    default_config()
+#    |> Map.merge(config_map)
+#    |> rabbitmq_connect()
   end
 
   # Confirmation sent by the broker after registering this process as a consumer
@@ -41,61 +42,61 @@ defmodule Warren.Consumer do
   end
 
   def handle_info({:basic_deliver, payload, %{delivery_tag: tag, redelivered: redelivered, routing_key: routing_key}}, state) do
-    %{chan: chan, opts: %{consume: consume}} = state
+    %{chan: chan, route: route} = state
 
-    spawn fn -> consume.(chan, tag, redelivered, payload, routing_key) end
+    spawn fn -> apply(route.controller, route.action, [chan, tag, redelivered, payload, routing_key]) end
 
     {:noreply, state}
   end
 
-  def handle_info({:DOWN, _, :process, _pid, _reason}, %{opts: opts}) do
-    {:ok, chan} = rabbitmq_connect(opts)
-    state = %{opts: opts, chan: chan}
+  def handle_info({:DOWN, _, :process, _pid, _reason}, %{config: config, route: route}) do
+    {:ok, state} = rabbitmq_connect(config, route)
     {:noreply, state}
   end
 
-  defp declare_queues(chan, opts = %{name: name, durable_queues: durable, exchange: exchange}) do
+  defp declare_queues(chan, route) do
+    Exchange.topic(chan, Atom.to_string(route.exchange))
+
     {:ok, %{queue: queue}} =
-      case opts do
-        %{:define_error_queue => true, :error_queue_suffix => suffix} ->
-          error_queue = name <> "_" <> suffix
-          Queue.declare(chan, error_queue, durable: durable)
+      case route.error_queue do
+        nil ->
+          Queue.declare(chan, route.name, durable: route.durable)
+        error_queue ->
+          Queue.declare(chan, error_queue, durable: route.durable)
 
           # Messages that cannot be delivered to any consumer in the main queue will be routed to the error queue
-          Queue.declare(chan, name, durable: durable,
+          Queue.declare(chan, route.name, durable: route.durable,
                                       arguments: [{"x-dead-letter-exchange", :longstr, ""},
                                                   {"x-dead-letter-routing-key", :longstr, error_queue}])
-        _ ->
-          Queue.declare(chan, name, durable: durable)
       end
 
     Logger.debug fn -> "Declared queue #{queue}" end
 
-    Queue.bind(chan, queue, exchange, [{:routing_key, queue}])
+    Queue.bind(chan, queue, Atom.to_string(route.exchange), [{:routing_key, queue}])
     # todo should the error queue be bound to a routing key too?
 
     # update the queue name with one returned by the server
-    {:ok, chan, %{opts | name: queue}}
+    {:ok, chan, %Warren.Dsl.Route{route | name: queue}}
   end
 
-  defp rabbitmq_connect(opts) do
-    case Connection.open(opts[:url]) do
+  defp rabbitmq_connect(config, route) do
+    case Connection.open(config[:url]) do
       {:ok, conn} ->
         # Get notifications when the connection goes down
         Process.monitor(conn.pid)
         # Everything else remains the same
         {:ok, chan} = Channel.open(conn)
 
-        {:ok, chan, opts} = declare_queues(chan, opts)
+        {:ok, chan, route} = declare_queues(chan, route)
 
-        Basic.qos(chan, prefetch_count: opts[:prefetch_count])
-        {:ok, _consumer_tag} = Basic.consume(chan, opts[:name])
-        {:ok, %{chan: chan, opts: opts}}
+        Basic.qos(chan, prefetch_count: route.prefetch_count)
+        {:ok, _consumer_tag} = Basic.consume(chan, route.name)
+        {:ok, %{chan: chan, config: config, route: route}}
 
       {:error, _} ->
         # Reconnection loop
-        :timer.sleep(opts[:reconnect_wait])
-        rabbitmq_connect(opts)
+        :timer.sleep(config[:reconnect_wait])
+        rabbitmq_connect(config, route)
     end
   end
 
@@ -113,17 +114,5 @@ defmodule Warren.Consumer do
     exception ->
       Basic.reject channel, tag, requeue: not redelivered
       IO.puts "Error converting #{payload} to integer"
-  end
-
-  defp default_config() do
-    %{
-      reconnect_wait: 10000,
-      define_error_queue: true,
-      error_queue_suffix: "_error",
-      prefetch_count: 10,
-      consumer: &Warren.Consumer.no_consumer/5,
-      name: "", # an empty queue name will instruct rabbit to auto-generate a name for this queue and return it
-      durable_queues: false
-    }
   end
 end

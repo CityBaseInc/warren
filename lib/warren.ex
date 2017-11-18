@@ -37,7 +37,11 @@ defmodule Warren do
         {:ok, config}
       end
 
-      defoverridable init: 2
+      def define_routes(opts) do
+        raise "warren expects define_routes/1 to be defined"
+      end
+
+      defoverridable init: 2, define_routes: 1
     end
   end
 
