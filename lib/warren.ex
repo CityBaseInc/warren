@@ -12,11 +12,7 @@ defmodule Warren do
 
   defmacro __using__(opts) do
     quote do
-#      @behaviour Phoenix.Endpoint
-
       unquote(config(opts))
-#      unquote(pubsub())
-#      unquote(plug())
       unquote(server())
     end
   end
@@ -25,10 +21,6 @@ defmodule Warren do
     quote do
       @otp_app unquote(opts)[:otp_app] || raise "warren expects :otp_app to be given"
       var!(config) = Warren.Supervisor.config(@otp_app, __MODULE__)
-#      var!(code_reloading?) = var!(config)[:code_reloader]
-
-      # Avoid unused variable warnings
-#      _ = var!(code_reloading?)
 
       @doc """
       Callback invoked on endpoint initialization.

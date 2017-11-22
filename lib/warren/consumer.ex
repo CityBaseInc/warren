@@ -10,20 +10,14 @@ defmodule Warren.Consumer do
 
   require Logger
 
+  alias Warren.Dsl.Route
+
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, [])
   end
 #
   def init({config, route}) do
     rabbitmq_connect(config, route)
-
-#    config_map =
-#      config
-#      |> Enum.into(%{})
-#
-#    default_config()
-#    |> Map.merge(config_map)
-#    |> rabbitmq_connect()
   end
 
   # Confirmation sent by the broker after registering this process as a consumer
@@ -44,7 +38,10 @@ defmodule Warren.Consumer do
   def handle_info({:basic_deliver, payload, %{delivery_tag: tag, redelivered: redelivered, routing_key: routing_key}}, state) do
     %{chan: chan, route: route} = state
 
-    spawn fn -> apply(route.controller, route.action, [chan, tag, redelivered, payload, routing_key]) end
+    spawn fn ->
+      apply(route.controller, route.action, [chan, tag, redelivered, payload, routing_key])
+
+    end
 
     {:noreply, state}
   end
@@ -54,8 +51,9 @@ defmodule Warren.Consumer do
     {:noreply, state}
   end
 
+  @spec declare_queues
   defp declare_queues(chan, route) do
-    Exchange.topic(chan, Atom.to_string(route.exchange))
+    Exchange.declare(chan, Atom.to_string(route.exchange), route.exchange_kind)
 
     {:ok, %{queue: queue}} =
       case route.error_queue do
