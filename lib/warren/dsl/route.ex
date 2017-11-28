@@ -10,7 +10,7 @@ defmodule Warren.Dsl.Route do
   @type t :: %Route{}
   @type exchange_kind :: :fanout | :direct | :topic | :match | :headers
 
-  @spec build(String.t, atom, exchange_kind, String.t, integer, String.t, String.t, boolean) :: Route.t
+  @spec build(String.t, atom, atom, String.t, integer, String.t, String.t, boolean) :: Route.t
   def build(name, exchange, exchange_kind, error_queue, prefetch_count, controller, action, durable) do
     %Route{
       name: name,

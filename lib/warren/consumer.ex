@@ -11,6 +11,7 @@ defmodule Warren.Consumer do
   require Logger
 
   alias Warren.Dsl.Route
+  alias AMQP.Channel
 
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, [])
@@ -18,6 +19,30 @@ defmodule Warren.Consumer do
 #
   def init({config, route}) do
     rabbitmq_connect(config, route)
+  end
+
+  @doc """
+  Flags the message as processed
+  """
+  @spec ack(pid, String.t) :: :ok
+  def ack(pid, tag) do
+    GenServer.cast(pid, {:ack, tag})
+  end
+
+  @doc """
+  Flags a message as unprocessed, and whether the failure was permanent
+  """
+  @spec nack(pid, String.t, boolean) :: :ok
+  def nack(pid, tag, permanent) do
+    GenServer.cast(pid, {:ack, tag})
+  end
+
+  def handle_cast({:ack, tag}, %{chan: chan}) do
+    Basic.ack(chan, tag)
+  end
+
+  def handle_cast({:nack, tag, permanent}, %{chan: chan}) do
+    Basic.reject(chan, tag, permanent)
   end
 
   # Confirmation sent by the broker after registering this process as a consumer
@@ -51,7 +76,7 @@ defmodule Warren.Consumer do
     {:noreply, state}
   end
 
-  @spec declare_queues
+  @spec declare_queues(Channel.t, Route.t) :: {:ok, Route.t}
   defp declare_queues(chan, route) do
     Exchange.declare(chan, Atom.to_string(route.exchange), route.exchange_kind)
 
@@ -74,7 +99,7 @@ defmodule Warren.Consumer do
     # todo should the error queue be bound to a routing key too?
 
     # update the queue name with one returned by the server
-    {:ok, chan, %Warren.Dsl.Route{route | name: queue}}
+    {:ok, chan, %Route{route | name: queue}}
   end
 
   defp rabbitmq_connect(config, route) do

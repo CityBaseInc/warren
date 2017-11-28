@@ -24,6 +24,7 @@ defmodule Warren.Dsl.Router do
 
       Module.register_attribute(__MODULE__, :exchanges, accumulate: true)
       Module.register_attribute(__MODULE__, :exchange, accumulate: false)
+      Module.register_attribute(__MODULE__, :exchange_kind, accumulate: false)
       @before_compile Warren.Dsl.Router
     end
   end
@@ -40,9 +41,22 @@ defmodule Warren.Dsl.Router do
     end
   end
 
-  defmacro exchange(exchange, opts \\ []) do
+  defmacro exchange(exchange, kind, opts \\ []) do
     quote do
       @exchange unquote(exchange)
+      @exchange_kind unquote(kind)
+
+      unquote(opts[:do])
+    end
+  end
+
+  # todo: not a fan of this, but not sure if anything is gained at the moment by parameterizing this. all the code of the macro
+  # is manipulating the ast before compile time, so not sure how to dedupe it.
+
+  defmacro topic(exchange, opts \\ []) do
+    quote do
+      @exchange unquote(exchange)
+      @exchange_kind :topic
 
       unquote(opts[:do])
     end
@@ -50,12 +64,12 @@ defmodule Warren.Dsl.Router do
 
   defmacro get(topic, controller, action, opts \\ []) do
     quote do
-      @exchanges {@exchange, unquote(topic), unquote(controller), unquote(action), unquote(opts)}
+      @exchanges {@exchange, @exchange_kind, unquote(topic), unquote(controller), unquote(action), unquote(opts)}
     end
   end
 
   def compile(env, exchanges, builder_opts) do
     exchanges
-    |> Enum.map(fn {ex, topic, controller, action, _opts} -> Macro.escape(Route.build(topic, ex, controller, action)) end)
+    |> Enum.map(fn {ex, ex_kind, topic, controller, action, _opts} -> Macro.escape(Route.build(topic, ex, ex_kind, controller, action)) end)
   end
 end
