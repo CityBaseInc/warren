@@ -41,22 +41,21 @@ defmodule Warren.Dsl.Router do
     end
   end
 
+  @doc """
+  Declares an exchange
+  """
   defmacro exchange(exchange, kind, opts \\ []) do
+    do_exchange(exchange, kind, opts)
+  end
+
+  defmacro topic(exchange, opts \\ []), do
+    do_exchange(exchange, :topic, opts)
+  end
+
+  defp do_exchange(exchange, kind, opts \\ []) do
     quote do
       @exchange unquote(exchange)
       @exchange_kind unquote(kind)
-
-      unquote(opts[:do])
-    end
-  end
-
-  # todo: not a fan of this, but not sure if anything is gained at the moment by parameterizing this. all the code of the macro
-  # is manipulating the ast before compile time, so not sure how to dedupe it.
-
-  defmacro topic(exchange, opts \\ []) do
-    quote do
-      @exchange unquote(exchange)
-      @exchange_kind :topic
 
       unquote(opts[:do])
     end
