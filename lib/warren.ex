@@ -4,7 +4,7 @@ defmodule Warren do
   Context for Warren
   """
 
-  # Giving credit where due: large parts of the plumbing of this projet are taken from Phoenix
+  # Giving credit where due: large parts of the plumbing of this project are taken from Phoenix
 
   @callback start_link() :: Supervisor.on_start
 

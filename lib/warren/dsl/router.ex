@@ -3,8 +3,6 @@ defmodule Warren.Dsl.Router do
 
   alias Warren.Dsl.Route
 
-#  @type plug :: module | atom
-
   @doc false
   defmacro __using__(opts) do
     quote do
@@ -41,14 +39,12 @@ defmodule Warren.Dsl.Router do
     end
   end
 
-  @doc """
-  Declares an exchange
-  """
+
   defmacro exchange(exchange, kind, opts \\ []) do
     do_exchange(exchange, kind, opts)
   end
 
-  defmacro topic(exchange, opts \\ []), do
+  defmacro topic(exchange, opts \\ []) do
     do_exchange(exchange, :topic, opts)
   end
 
@@ -69,6 +65,6 @@ defmodule Warren.Dsl.Router do
 
   def compile(env, exchanges, builder_opts) do
     exchanges
-    |> Enum.map(fn {ex, ex_kind, topic, controller, action, _opts} -> Macro.escape(Route.build(topic, ex, ex_kind, controller, action)) end)
+    |> Enum.map(fn {ex, ex_kind, topic, controller, action, _} -> Macro.escape(Route.build(topic, ex, ex_kind, controller, action)) end)
   end
 end

@@ -11,6 +11,7 @@ defmodule Warren.Consumer do
   require Logger
 
   alias Warren.Dsl.Route
+  alias Warren.Controller
   alias AMQP.Channel
 
   def start_link(config) do
@@ -21,29 +22,29 @@ defmodule Warren.Consumer do
     rabbitmq_connect(config, route)
   end
 
-  @doc """
-  Flags the message as processed
-  """
-  @spec ack(pid, String.t) :: :ok
-  def ack(pid, tag) do
-    GenServer.cast(pid, {:ack, tag})
-  end
-
-  @doc """
-  Flags a message as unprocessed, and whether the failure was permanent
-  """
-  @spec nack(pid, String.t, boolean) :: :ok
-  def nack(pid, tag, permanent) do
-    GenServer.cast(pid, {:ack, tag})
-  end
-
-  def handle_cast({:ack, tag}, %{chan: chan}) do
-    Basic.ack(chan, tag)
-  end
-
-  def handle_cast({:nack, tag, permanent}, %{chan: chan}) do
-    Basic.reject(chan, tag, permanent)
-  end
+#  @doc """
+#  Flags the message as processed
+#  """
+#  @spec ack(pid, String.t) :: :ok
+#  def ack(pid, tag) do
+#    GenServer.cast(pid, {:ack, tag})
+#  end
+#
+#  @doc """
+#  Flags a message as unprocessed, and whether the failure was permanent
+#  """
+#  @spec nack(pid, String.t, boolean) :: :ok
+#  def nack(pid, tag, permanent) do
+#    GenServer.cast(pid, {:ack, tag})
+#  end
+#
+#  def handle_cast({:ack, tag}, %{chan: chan}) do
+#    Basic.ack(chan, tag)
+#  end
+#
+#  def handle_cast({:nack, tag, permanent}, %{chan: chan}) do
+#    Basic.reject(chan, tag, permanent)
+#  end
 
   # Confirmation sent by the broker after registering this process as a consumer
   def handle_info({:basic_consume_ok, %{consumer_tag: consumer_tag}}, state) do
@@ -60,20 +61,54 @@ defmodule Warren.Consumer do
     {:noreply, state}
   end
 
-  def handle_info({:basic_deliver, payload, %{delivery_tag: tag, redelivered: redelivered, routing_key: routing_key}}, state) do
-    %{chan: chan, route: route} = state
+  def handle_info({:basic_deliver, payload, params}, state) do
+    {config = %{chan: chan, route: route}, messages} = state
 
-    spawn fn ->
-      apply(route.controller, route.action, [chan, tag, redelivered, payload, routing_key])
+    t = Task.Supervisor.async_nolink(Warren.Supervisor.task_supervisor(), Controller, :execute, [route, self(), payload, params])
 
-    end
+    Logger.debug fn -> ["Task started with pid ", inspect(t.pid), ", reference ", inspect(t.ref)] end
 
-    {:noreply, state}
+    new_messages =
+      messages
+      |> Map.put(t.ref, {params[:delivery_tag], params[:redelivered]})
+
+    {:noreply, {config, new_messages}}
   end
 
-  def handle_info({:DOWN, _, :process, _pid, _reason}, %{config: config, route: route}) do
-    {:ok, state} = rabbitmq_connect(config, route)
-    {:noreply, state}
+  def handle_info({ref, response}, {config = %{chan: channel}, messages}) do
+    Logger.debug fn -> ["Received down notification ", inspect(ref), inspect(response)] end
+
+    {delivery_tag, redelivered} = messages[ref]
+
+    case response do
+      {:ok} ->
+        Basic.ack(channel, delivery_tag)
+      {:perm_error} ->
+        Basic.reject(channel, delivery_tag, requeue: false)
+      _ ->
+        Basic.reject(channel, delivery_tag, requeue: !redelivered)
+    end
+
+    new_messages =
+      messages
+      |> Map.delete(ref)
+
+    Logger.debug fn -> ["New message map is", inspect(new_messages)] end
+
+    {:noreply, {config, new_messages}}
+  end
+
+  def handle_info({:DOWN, _, :process, pid, reason}, state = {%{config: config, route: route, conn_pid: conn_pid}, messages}) do
+
+    Logger.debug fn -> ["Notification pid is ", inspect(pid), "; Connection pid is ", inspect(conn_pid)] end
+
+    # we only care about DOWN notifications for the connection, not any of the tasks - those are handled up above.
+    {:ok, new_state} =
+      case pid do
+        ^conn_pid -> rabbitmq_connect(config, route, messages)
+        _ -> {:ok, state}
+      end
+    {:noreply, new_state}
   end
 
   @spec declare_queues(Channel.t, Route.t) :: {:ok, Route.t}
@@ -102,7 +137,7 @@ defmodule Warren.Consumer do
     {:ok, chan, %Route{route | name: queue}}
   end
 
-  defp rabbitmq_connect(config, route) do
+  defp rabbitmq_connect(config, route, messages \\ %{}) do
     case Connection.open(config[:url]) do
       {:ok, conn} ->
         # Get notifications when the connection goes down
@@ -114,28 +149,12 @@ defmodule Warren.Consumer do
 
         Basic.qos(chan, prefetch_count: route.prefetch_count)
         {:ok, _consumer_tag} = Basic.consume(chan, route.name)
-        {:ok, %{chan: chan, config: config, route: route}}
+        {:ok, {%{chan: chan, config: config, route: route, conn_pid: conn.pid}, messages}}
 
       {:error, _} ->
         # Reconnection loop
         :timer.sleep(config[:reconnect_wait])
         rabbitmq_connect(config, route)
     end
-  end
-
-  def no_consumer(channel, tag, redelivered, payload, routing_key) do
-    raise "No consumer function specified for #{routing_key}"
-
-  rescue
-    # Requeue unless it's a redelivered message.
-    # This means we will retry consuming a message once in case of exception
-    # before we give up and have it moved to the error queue
-    #
-    # You might also want to catch :exit signal in production code.
-    # Make sure you call ack, nack or reject otherwise comsumer will stop
-    # receiving messages.
-    exception ->
-      Basic.reject channel, tag, requeue: not redelivered
-      IO.puts "Error converting #{payload} to integer"
   end
 end

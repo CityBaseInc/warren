@@ -33,10 +33,13 @@ defmodule Warren.Supervisor do
 
     server? = server?(conf)
 
-    children = server_children(mod, conf, routes, server?)# ++ [supervisor(Task.Supervisor, @task_supervisor)]
+    children = server_children(mod, conf, routes, server?) ++ [worker(Task.Supervisor, [[name: @task_supervisor]])]
 
     supervise(children, strategy: :one_for_one)
   end
+
+  @doc false
+  def task_supervisor(), do: @task_supervisor
 
 #  def start_child(func) do
 #    Task.Supervisor.start_child(
